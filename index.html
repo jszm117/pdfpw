@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PurrUnlock — Private PDF Password Remover</title>
+
+  <!-- Client-side PDF libraries (loaded from reliable free CDNs) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+
+  <style>
+    :root {
+      --bg-top: #e0f2fe;
+      --bg-bottom: #f0f9ff;
+      --card-bg: #ffffff;
+      --navy: #0f172a;
+      --navy-soft: #1e3a8a;
+      --blue-primary: #2563eb;
+      --blue-hover: #1d4ed8;
+      --blue-light: #dbeafe;
+      --blue-pale: #eff6ff;
+      --blue-border: #bfdbfe;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --success-bg: #ecfdf5;
+      --success-border: #a7f3d0;
+      --success-text: #065f46;
+      --error-bg: #fef2f2;
+      --error-border: #fecaca;
+      --error-text: #b91c1c;
+      --radius-lg: 24px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      --shadow-card: 0 20px 50px -12px rgba(30, 58, 138, 0.14), 0 4px 16px -4px rgba(37, 99, 235, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: linear-gradient(160deg, var(--bg-top) 0%, var(--bg-bottom) 60%, #e0f2fe 100%);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Subtle floating paw prints in background */
+    .bg-paws {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.06;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='%231e3a8a'%3E%3Cellipse cx='40' cy='46' rx='10' ry='8'/%3E%3Ccircle cx='28' cy='34' r='4'/%3E%3Ccircle cx='36' cy='29' r='4'/%3E%3Ccircle cx='45' cy='29' r='4'/%3E%3Ccircle cx='52' cy='35' r='4'/%3E%3C/g%3E%3C/svg%3E");
+      background-size: 90px 90px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 490px;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Main Card */
+    .card {
+      background: var(--card-bg);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-card);
+      border: 1px solid rgba(191, 219, 254, 0.7);
+      padding: 32px 28px 28px;
+      transition: transform 0.2s ease;
+    }
+
+    /* Header & Cat Mascot */
+    .header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .cat-stage {
+      width: 148px;
+      height: 118px;
+      margin: 0 auto 8px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .cat-svg {
+      width: 148px;
+      height: 118px;
+      overflow: visible;
+    }
+
+    /* Cat Animations */
+    @keyframes floatZ {
+      0% { opacity: 0; transform: translate(0, 4px) scale(0.8); }
+      40% { opacity: 1; }
+      100% { opacity: 0; transform: translate(8px, -14px) scale(1.15); }
+    }
+
+    @keyframes wagTail {
+      0%, 100% { transform: rotate(0deg); }
+      50% { transform: rotate(12deg); }
+    }
+
+    @keyframes bobHead {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-3px); }
+    }
+
+    @keyframes sparklePop {
+      0%, 100% { opacity: 0.4; transform: scale(0.85); }
+      50% { opacity: 1; transform: scale(1.15); }
+    }
+
+    .zzz-1 { animation: floatZ 2.6s ease-in-out infinite; }
+    .zzz-2 { animation: floatZ 2.6s ease-in-out 0.9s infinite; }
+
+    .cat-tail {
+      transform-origin: 112px 92px;
+      animation: wagTail 3s ease-in-out infinite;
+    }
+
+    .cat-svg[data-mood="working"] .cat-body-group {
+      animation: bobHead 0.55s ease-in-out infinite;
+    }
+
+    .cat-svg[data-mood="success"] .cat-tail {
+      animation: wagTail 0.9s ease-in-out infinite;
+    }
+
+    .sparkle {
+      transform-origin: center;
+      animation: sparklePop 1.4s ease-in-out infinite;
+    }
+
+    /* Mood visibility toggling */
+    .mood-el { display: none; }
+    .cat-svg[data-mood="sleepy"] .mood-sleepy { display: inline; }
+    .cat-svg[data-mood="curious"] .mood-curious { display: inline; }
+    .cat-svg[data-mood="working"] .mood-working { display: inline; }
+    .cat-svg[data-mood="success"] .mood-success { display: inline; }
+    .cat-svg[data-mood="error"] .mood-error { display: inline; }
+
+    h1 {
+      font-size: 1.65rem;
+      font-weight: 800;
+      color: var(--navy-soft);
+      letter-spacing: -0.02em;
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      font-size: 0.94rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    /* Privacy Badge */
+    .privacy-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 14px;
+      padding: 6px 12px;
+      background: var(--blue-pale);
+      border: 1px solid var(--blue-border);
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--navy-soft);
+    }
+
+    .privacy-badge svg {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+      color: var(--blue-primary);
+    }
+
+    /* Drop Zone */
+    .drop-zone {
+      border: 2px dashed var(--blue-border);
+      background: var(--blue-pale);
+      border-radius: var(--radius-md);
+      padding: 28px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .drop-zone:hover,
+    .drop-zone.drag-over {
+      border-color: var(--blue-primary);
+      background: var(--blue-light);
+      transform: translateY(-1px);
+    }
+
+    .drop-zone-icon {
+      width: 44px;
+      height: 44px;
+      margin: 0 auto 10px;
+      background: #ffffff;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--blue-primary);
+      box-shadow: 0 4px 10px rgba(37, 99, 235, 0.1);
+    }
+
+    .drop-zone-title {
+      font-size: 0.98rem;
+      font-weight: 700;
+      color: var(--navy-soft);
+      margin-bottom: 4px;
+    }
+
+    .drop-zone-hint {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+    }
+
+    .drop-zone-hint span {
+      color: var(--blue-primary);
+      font-weight: 600;
+      text-decoration: underline;
+    }
+
+    #fileInput {
+      display: none;
+    }
+
+    /* Selected File Pill */
+    .file-card {
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: var(--blue-pale);
+      border: 1px solid var(--blue-border);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+    }
+
+    .file-card.visible {
+      display: flex;
+    }
+
+    .file-info {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .file-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: var(--blue-primary);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      flex-shrink: 0;
+    }
+
+    .file-meta {
+      min-width: 0;
+    }
+
+    .file-name {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: var(--navy);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file-size {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .remove-btn {
+      background: #ffffff;
+      border: 1px solid var(--blue-border);
+      color: var(--text-muted);
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.15s ease;
+    }
+
+    .remove-btn:hover {
+      background: var(--error-bg);
+      border-color: var(--error-border);
+      color: var(--error-text);
+    }
+
+    /* Password Section */
+    .form-group {
+      margin-top: 18px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.86rem;
+      font-weight: 700;
+      color: var(--navy-soft);
+      margin-bottom: 8px;
+    }
+
+    .password-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .password-input {
+      width: 100%;
+      padding: 13px 44px 13px 15px;
+      border: 1.5px solid var(--blue-border);
+      border-radius: var(--radius-sm);
+      font-size: 0.96rem;
+      color: var(--navy);
+      background: #ffffff;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .password-input:focus {
+      border-color: var(--blue-primary);
+      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.14);
+    }
+
+    .password-input:disabled {
+      background: #f8fafc;
+      cursor: not-allowed;
+    }
+
+    .toggle-pw-btn {
+      position: absolute;
+      right: 10px;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+    }
+
+    .toggle-pw-btn:hover {
+      color: var(--blue-primary);
+      background: var(--blue-pale);
+    }
+
+    /* Buttons */
+    .btn {
+      width: 100%;
+      margin-top: 18px;
+      padding: 14px 20px;
+      border: none;
+      border-radius: var(--radius-sm);
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: all 0.2s ease;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--blue-primary) 0%, var(--navy-soft) 100%);
+      color: #ffffff;
+      box-shadow: 0 8px 20px -6px rgba(37, 99, 235, 0.5);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 24px -6px rgba(37, 99, 235, 0.6);
+    }
+
+    .btn-primary:active:not(:disabled) {
+      transform: translateY(0);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .btn-secondary {
+      background: var(--blue-pale);
+      color: var(--navy-soft);
+      border: 1px solid var(--blue-border);
+      margin-top: 10px;
+    }
+
+    .btn-secondary:hover {
+      background: var(--blue-light);
+    }
+
+    .paw-icon {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+
+    /* Progress Bar */
+    .progress-box {
+      display: none;
+      margin-top: 18px;
+      padding: 14px 16px;
+      background: var(--blue-pale);
+      border: 1px solid var(--blue-border);
+      border-radius: var(--radius-sm);
+    }
+
+    .progress-box.visible {
+      display: block;
+    }
+
+    .progress-text {
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--navy-soft);
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 8px;
+      background: #dbeafe;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #3b82f6, #1d4ed8);
+      border-radius: 999px;
+      transition: width 0.25s ease;
+    }
+
+    /* Status Alerts */
+    .alert {
+      display: none;
+      margin-top: 16px;
+      padding: 13px 15px;
+      border-radius: var(--radius-sm);
+      font-size: 0.88rem;
+      line-height: 1.45;
+      font-weight: 500;
+    }
+
+    .alert.visible {
+      display: block;
+    }
+
+    .alert-error {
+      background: var(--error-bg);
+      border: 1px solid var(--error-border);
+      color: var(--error-text);
+    }
+
+    .alert-success {
+      background: var(--success-bg);
+      border: 1px solid var(--success-border);
+      color: var(--success-text);
+    }
+
+    .success-actions {
+      display: none;
+      margin-top: 4px;
+    }
+
+    .success-actions.visible {
+      display: block;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .footer strong {
+      color: var(--navy-soft);
+    }
+
+    @media (max-width: 480px) {
+      .card {
+        padding: 24px 18px 22px;
+        border-radius: 20px;
+      }
+
+      h1 {
+        font-size: 1.45rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-paws" aria-hidden="true"></div>
+
+  <main class="container">
+    <section class="card">
+      <!-- Header & Interactive Cat SVG -->
+      <header class="header">
+        <div class="cat-stage">
+          <svg id="catMascot" class="cat-svg" data-mood="sleepy" viewBox="0 0 160 125" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cute blue cat mascot">
+            <!-- Soft shadow beneath cat -->
+            <ellipse cx="80" cy="112" rx="52" ry="8" fill="#DBEAFE" />
+
+            <!-- Tail -->
+            <path class="cat-tail" d="M112 92 C134 90, 140 70, 128 60 C123 56, 117 61, 120 67 C124 74, 119 82, 110 83" stroke="#1E3A8A" stroke-width="8" stroke-linecap="round" fill="none" />
+
+            <g class="cat-body-group">
+              <!-- Cat Body -->
+              <path d="M44 108 C40 82, 50 66, 80 66 C110 66, 120 82, 116 108 Z" fill="#3B82F6" />
+              <!-- White Belly Patch -->
+              <ellipse cx="80" cy="94" rx="18" ry="14" fill="#EFF6FF" />
+
+              <!-- Left & Right Ears -->
+              <path d="M47 46 L42 18 L66 32 Z" fill="#2563EB" stroke="#1E3A8A" stroke-width="2.5" stroke-linejoin="round" />
+              <path d="M49 41 L46 25 L60 34 Z" fill="#93C5FD" />
+              <path d="M113 46 L118 18 L94 32 Z" fill="#2563EB" stroke="#1E3A8A" stroke-width="2.5" stroke-linejoin="round" />
+              <path d="M111 41 L114 25 L100 34 Z" fill="#93C5FD" />
+
+              <!-- Cat Head -->
+              <ellipse cx="80" cy="54" rx="36" ry="29" fill="#3B82F6" stroke="#1E3A8A" stroke-width="2.5" />
+
+              <!-- Forehead Stripes -->
+              <path d="M80 26 V34 M72 28 L74 34 M88 28 L86 34" stroke="#1E3A8A" stroke-width="2.5" stroke-linecap="round" />
+
+              <!-- Rosy Cheeks -->
+              <ellipse cx="56" cy="60" rx="5.5" ry="3.2" fill="#93C5FD" opacity="0.85" />
+              <ellipse cx="104" cy="60" rx="5.5" ry="3.2" fill="#93C5FD" opacity="0.85" />
+
+              <!-- Whiskers -->
+              <g stroke="#1E3A8A" stroke-width="2" stroke-linecap="round">
+                <line x1="34" y1="54" x2="48" y2="56" />
+                <line x1="32" y1="62" x2="48" y2="61" />
+                <line x1="126" y1="54" x2="112" y2="56" />
+                <line x1="128" y1="62" x2="112" y2="61" />
+              </g>
+
+              <!-- Cute Nose -->
+              <polygon points="77,57 83,57 80,61" fill="#1E3A8A" />
+
+              <!-- MOOD: SLEEPY (Idle / Locked) -->
+              <g class="mood-el mood-sleepy">
+                <path d="M58 51 Q64 56 70 51" stroke="#0F172A" stroke-width="2.6" stroke-linecap="round" fill="none" />
+                <path d="M90 51 Q96 56 102 51" stroke="#0F172A" stroke-width="2.6" stroke-linecap="round" fill="none" />
+                <path d="M76 64 Q80 67 84 64" stroke="#0F172A" stroke-width="2" stroke-linecap="round" fill="none" />
+                <!-- Floating Zzz -->
+                <text x="118" y="34" fill="#2563EB" font-size="13" font-weight="800" class="zzz-1">z</text>
+                <text x="128" y="22" fill="#1E3A8A" font-size="16" font-weight="800" class="zzz-2">Z</text>
+              </g>
+
+              <!-- MOOD: CURIOUS (File Uploaded) -->
+              <g class="mood-el mood-curious">
+                <circle cx="64" cy="50" r="5" fill="#0F172A" />
+                <circle cx="66" cy="48" r="1.8" fill="#FFFFFF" />
+                <circle cx="96" cy="50" r="5" fill="#0F172A" />
+                <circle cx="98" cy="48" r="1.8" fill="#FFFFFF" />
+                <path d="M75 64 Q80 69 85 64" stroke="#0F172A" stroke-width="2.2" stroke-linecap="round" fill="none" />
+              </g>
+
+              <!-- MOOD: WORKING (Unlocking) -->
+              <g class="mood-el mood-working">
+                <circle cx="64" cy="50" r="4.5" fill="#0F172A" />
+                <circle cx="65.5" cy="48.5" r="1.6" fill="#FFFFFF" />
+                <circle cx="96" cy="50" r="4.5" fill="#0F172A" />
+                <circle cx="97.5" cy="48.5" r="1.6" fill="#FFFFFF" />
+                <ellipse cx="80" cy="65" rx="3.2" ry="2.4" fill="#1E3A8A" />
+              </g>
+
+              <!-- MOOD: SUCCESS (Unlocked & Happy!) -->
+              <g class="mood-el mood-success">
+                <path d="M58 52 Q64 44 70 52" stroke="#0F172A" stroke-width="2.8" stroke-linecap="round" fill="none" />
+                <path d="M90 52 Q96 44 102 52" stroke="#0F172A" stroke-width="2.8" stroke-linecap="round" fill="none" />
+                <path d="M74 63 Q77 68 80 64 Q83 68 86 63" stroke="#0F172A" stroke-width="2.2" stroke-linecap="round" fill="none" />
+                <!-- Sparkles -->
+                <path class="sparkle" d="M26 28 L29 21 L32 28 L39 31 L32 34 L29 41 L26 34 L19 31 Z" fill="#F59E0B" />
+                <path class="sparkle" d="M132 24 L134 19 L136 24 L141 26 L136 28 L134 33 L132 28 L127 26 Z" fill="#3B82F6" />
+              </g>
+
+              <!-- MOOD: ERROR (Wrong Password) -->
+              <g class="mood-el mood-error">
+                <circle cx="64" cy="50" r="6" fill="#FFFFFF" stroke="#0F172A" stroke-width="2" />
+                <circle cx="64" cy="50" r="2.2" fill="#0F172A" />
+                <circle cx="96" cy="50" r="6" fill="#FFFFFF" stroke="#0F172A" stroke-width="2" />
+                <circle cx="96" cy="50" r="2.2" fill="#0F172A" />
+                <path d="M75 66 Q80 62 85 66" stroke="#0F172A" stroke-width="2.2" stroke-linecap="round" fill="none" />
+                <!-- Question mark -->
+                <text x="124" y="34" fill="#DC2626" font-size="20" font-weight="800">?</text>
+              </g>
+
+              <!-- Paws resting in front -->
+              <ellipse cx="62" cy="106" rx="11" ry="7" fill="#EFF6FF" stroke="#1E3A8A" stroke-width="2.2" />
+              <ellipse cx="98" cy="106" rx="11" ry="7" fill="#EFF6FF" stroke="#1E3A8A" stroke-width="2.2" />
+
+              <!-- Tiny Padlock between paws (Locked vs Unlocked) -->
+              <g class="mood-el mood-sleepy mood-curious mood-working mood-error">
+                <path d="M75 96 V91 A5 5 0 0 1 85 91 V96" stroke="#1E3A8A" stroke-width="2.5" fill="none" />
+                <rect x="72" y="95" width="16" height="13" rx="3" fill="#1E3A8A" />
+                <circle cx="80" cy="101.5" r="2" fill="#93C5FD" />
+              </g>
+              <g class="mood-el mood-success">
+                <path d="M75 95 V89 A5 5 0 0 1 85 88" stroke="#059669" stroke-width="2.5" stroke-linecap="round" fill="none" />
+                <rect x="72" y="95" width="16" height="13" rx="3" fill="#10B981" />
+                <path d="M77 101.5 L79.3 103.8 L83.5 99.2" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+              </g>
+            </g>
+          </svg>
+        </div>
+
+        <h1>PurrUnlock PDF</h1>
+        <p class="subtitle">Remove passwords from your PDFs in seconds—right inside your browser.</p>
+
+        <div class="privacy-badge" title="Your PDF never leaves your device">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            <path d="m9 12 2 2 4-4" />
+          </svg>
+          100% Private &bull; Processed Locally (No Uploads)
+        </div>
+      </header>
+
+      <!-- File Upload Zone -->
+      <div id="dropZone" class="drop-zone" role="button" tabindex="0" aria-label="Upload a password-protected PDF file">
+        <div class="drop-zone-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+        </div>
+        <div class="drop-zone-title">Drop your locked PDF here</div>
+        <div class="drop-zone-hint">or <span>browse your device</span> to pick a file</div>
+        <input type="file" id="fileInput" accept=".pdf,application/pdf" />
+      </div>
+
+      <!-- Selected File Display -->
+      <div id="fileCard" class="file-card">
+        <div class="file-info">
+          <div class="file-icon">PDF</div>
+          <div class="file-meta">
+            <div id="fileName" class="file-name">document.pdf</div>
+            <div id="fileSize" class="file-size">0 KB</div>
+          </div>
+        </div>
+        <button type="button" id="removeFileBtn" class="remove-btn" title="Remove file" aria-label="Remove selected file">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Password Form -->
+      <div class="form-group">
+        <label for="passwordInput" class="form-label">Current PDF Password</label>
+        <div class="password-wrapper">
+          <input
+            type="password"
+            id="passwordInput"
+            class="password-input"
+            placeholder="Enter password (leave blank if none)"
+            autocomplete="off"
+          />
+          <button type="button" id="togglePwBtn" class="toggle-pw-btn" aria-label="Show or hide password" title="Show/Hide password">
+            <svg id="eyeIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Unlock Button -->
+      <button type="button" id="unlockBtn" class="btn btn-primary" disabled>
+        <svg class="paw-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <ellipse cx="12" cy="15.5" rx="4.5" ry="3.8" />
+          <circle cx="6.2" cy="10.2" r="2.1" />
+          <circle cx="10" cy="7.5" r="2.1" />
+          <circle cx="14.2" cy="7.5" r="2.1" />
+          <circle cx="17.8" cy="10.2" r="2.1" />
+        </svg>
+        <span id="unlockBtnText">Unlock &amp; Download PDF</span>
+      </button>
+
+      <!-- Progress Bar -->
+      <div id="progressBox" class="progress-box" aria-live="polite">
+        <div class="progress-text">
+          <span id="progressLabel">Waking up the cat...</span>
+          <span id="progressPercent">0%</span>
+        </div>
+        <div class="progress-track">
+          <div id="progressFill" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <!-- Error Alert -->
+      <div id="errorAlert" class="alert alert-error" role="alert"></div>
+
+      <!-- Success Alert & Extra Actions -->
+      <div id="successAlert" class="alert alert-success" role="status"></div>
+      <div id="successActions" class="success-actions">
+        <button type="button" id="downloadAgainBtn" class="btn btn-primary">
+          <svg class="paw-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Download Unlocked PDF Again
+        </button>
+        <button type="button" id="resetBtn" class="btn btn-secondary">
+          Unlock Another PDF
+        </button>
+      </div>
+    </section>
+
+    <footer class="footer">
+      Made with 🐾 &bull; <strong>Zero servers, zero tracking.</strong> Everything stays on your computer.
+    </footer>
+  </main>
+
+  <script>
+    // Configure PDF.js worker from CDN
+    if (typeof pdfjsLib !== "undefined") {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    }
+
+    // DOM Elements
+    const catMascot = document.getElementById("catMascot");
+    const dropZone = document.getElementById("dropZone");
+    const fileInput = document.getElementById("fileInput");
+    const fileCard = document.getElementById("fileCard");
+    const fileNameEl = document.getElementById("fileName");
+    const fileSizeEl = document.getElementById("fileSize");
+    const removeFileBtn = document.getElementById("removeFileBtn");
+    const passwordInput = document.getElementById("passwordInput");
+    const togglePwBtn = document.getElementById("togglePwBtn");
+    const unlockBtn = document.getElementById("unlockBtn");
+    const unlockBtnText = document.getElementById("unlockBtnText");
+    const progressBox = document.getElementById("progressBox");
+    const progressLabel = document.getElementById("progressLabel");
+    const progressPercent = document.getElementById("progressPercent");
+    const progressFill = document.getElementById("progressFill");
+    const errorAlert = document.getElementById("errorAlert");
+    const successAlert = document.getElementById("successAlert");
+    const successActions = document.getElementById("successActions");
+    const downloadAgainBtn = document.getElementById("downloadAgainBtn");
+    const resetBtn = document.getElementById("resetBtn");
+
+    // App State
+    let selectedFile = null;
+    let unlockedBlobUrl = null;
+    let unlockedFileName = "";
+    let isProcessing = false;
+
+    // Helpers
+    function setCatMood(mood) {
+      catMascot.setAttribute("data-mood", mood);
+    }
+
+    function formatBytes(bytes) {
+      if (bytes < 1024) return bytes + " B";
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+      return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+    }
+
+    function showError(message) {
+      errorAlert.textContent = message;
+      errorAlert.classList.add("visible");
+      successAlert.classList.remove("visible");
+      successActions.classList.remove("visible");
+      setCatMood("error");
+    }
+
+    function clearAlerts() {
+      errorAlert.classList.remove("visible");
+      successAlert.classList.remove("visible");
+      successActions.classList.remove("visible");
+    }
+
+    function setProgress(percent, label) {
+      progressBox.classList.add("visible");
+      progressFill.style.width = percent + "%";
+      progressPercent.textContent = Math.round(percent) + "%";
+      if (label) progressLabel.textContent = label;
+    }
+
+    function hideProgress() {
+      progressBox.classList.remove("visible");
+      progressFill.style.width = "0%";
+    }
+
+    function cleanupBlobUrl() {
+      if (unlockedBlobUrl) {
+        URL.revokeObjectURL(unlockedBlobUrl);
+        unlockedBlobUrl = null;
+      }
+    }
+
+    function triggerDownload(url, filename) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    function handleFileSelection(file) {
+      if (!file) return;
+      clearAlerts();
+      cleanupBlobUrl();
+      hideProgress();
+
+      const isPdfExtension = file.name.toLowerCase().endsWith(".pdf");
+      const isPdfMime = file.type === "application/pdf" || file.type === "";
+
+      if (!isPdfExtension && !isPdfMime) {
+        showError("Meow-ch! That doesn't look like a PDF file. Please choose a valid .pdf file.");
+        return;
+      }
+
+      selectedFile = file;
+      fileNameEl.textContent = file.name;
+      fileSizeEl.textContent = formatBytes(file.size);
+
+      dropZone.style.display = "none";
+      fileCard.classList.add("visible");
+      unlockBtn.disabled = false;
+      unlockBtn.style.display = "inline-flex";
+      setCatMood("curious");
+      passwordInput.focus();
+    }
+
+    function resetApp() {
+      selectedFile = null;
+      cleanupBlobUrl();
+      fileInput.value = "";
+      passwordInput.value = "";
+      passwordInput.disabled = false;
+      dropZone.style.display = "block";
+      fileCard.classList.remove("visible");
+      unlockBtn.disabled = true;
+      unlockBtn.style.display = "inline-flex";
+      unlockBtnText.textContent = "Unlock & Download PDF";
+      clearAlerts();
+      hideProgress();
+      setCatMood("sleepy");
+    }
+
+    // Event Listeners: Upload & Drag-and-Drop
+    dropZone.addEventListener("click", () => fileInput.click());
+    dropZone.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        fileInput.click();
+      }
+    });
+
+    fileInput.addEventListener("change", (e) => {
+      if (e.target.files && e.target.files[0]) {
+        handleFileSelection(e.target.files[0]);
+      }
+    });
+
+    ["dragenter", "dragover"].forEach((evt) => {
+      dropZone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.add("drag-over");
+      });
+    });
+
+    ["dragleave", "drop"].forEach((evt) => {
+      dropZone.addEventListener(evt, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.remove("drag-over");
+      });
+    });
+
+    dropZone.addEventListener("drop", (e) => {
+      const files = e.dataTransfer.files;
+      if (files && files[0]) {
+        handleFileSelection(files[0]);
+      }
+    });
+
+    removeFileBtn.addEventListener("click", () => {
+      if (!isProcessing) resetApp();
+    });
+
+    resetBtn.addEventListener("click", resetApp);
+
+    // Toggle Password Visibility
+    togglePwBtn.addEventListener("click", () => {
+      const isHidden = passwordInput.type === "password";
+      passwordInput.type = isHidden ? "text" : "password";
+      togglePwBtn.innerHTML = isHidden
+        ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
+        : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+    });
+
+    // Press Enter in password box to unlock
+    passwordInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !unlockBtn.disabled && !isProcessing) {
+        unlockPdf();
+      }
+    });
+
+    downloadAgainBtn.addEventListener("click", () => {
+      if (unlockedBlobUrl && unlockedFileName) {
+        triggerDownload(unlockedBlobUrl, unlockedFileName);
+      }
+    });
+
+    unlockBtn.addEventListener("click", unlockPdf);
+
+    // Core Client-Side PDF Unlock Function
+    async function unlockPdf() {
+      if (!selectedFile || isProcessing) return;
+
+      if (typeof pdfjsLib === "undefined" || typeof PDFLib === "undefined") {
+        showError("The PDF libraries couldn't load. Please check your internet connection and refresh the page.");
+        return;
+      }
+
+      isProcessing = true;
+      clearAlerts();
+      cleanupBlobUrl();
+      unlockBtn.disabled = true;
+      passwordInput.disabled = true;
+      unlockBtnText.textContent = "Unlocking...";
+      setCatMood("working");
+      setProgress(5, "Checking your PDF & password...");
+
+      let pdfDoc = null;
+
+      try {
+        // Read fresh ArrayBuffer each attempt so retries always work cleanly
+        const arrayBuffer = await selectedFile.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+
+        // Quick header sanity check for %PDF-
+        const header = new TextDecoder().decode(bytes.slice(0, 1024));
+        if (!header.includes("%PDF-")) {
+          throw { customMessage: "This file doesn't appear to be a valid PDF. It may be corrupted or renamed." };
+        }
+
+        // 1. Decrypt & open the PDF using PDF.js with the provided password
+        const loadingTask = pdfjsLib.getDocument({
+          data: bytes,
+          password: passwordInput.value
+        });
+
+        pdfDoc = await loadingTask.promise;
+        const totalPages = pdfDoc.numPages;
+
+        // 2. Build a brand-new unlocked PDF using pdf-lib
+        const newPdf = await PDFLib.PDFDocument.create();
+
+        for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+          const pct = 10 + ((pageNum - 1) / totalPages) * 80;
+          setProgress(pct, `Unlocking page ${pageNum} of ${totalPages}...`);
+
+          const page = await pdfDoc.getPage(pageNum);
+          const originalViewport = page.getViewport({ scale: 1.0 });
+
+          // Render at crisp 2x resolution
+          const renderScale = 2.0;
+          const renderViewport = page.getViewport({ scale: renderScale });
+
+          const canvas = document.createElement("canvas");
+          const ctx = canvas.getContext("2d");
+          canvas.width = Math.floor(renderViewport.width);
+          canvas.height = Math.floor(renderViewport.height);
+
+          // Fill white background so transparent PDFs stay clean
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+          await page.render({
+            canvasContext: ctx,
+            viewport: renderViewport
+          }).promise;
+
+          const jpgDataUrl = canvas.toDataURL("image/jpeg", 0.92);
+          const embeddedImage = await newPdf.embedJpg(jpgDataUrl);
+
+          const newPage = newPdf.addPage([originalViewport.width, originalViewport.height]);
+          newPage.drawImage(embeddedImage, {
+            x: 0,
+            y: 0,
+            width: originalViewport.width,
+            height: originalViewport.height
+          });
+
+          // Free canvas memory immediately
+          canvas.width = 0;
+          canvas.height = 0;
+        }
+
+        setProgress(95, "Wrapping up your unlocked PDF...");
+        const unlockedBytes = await newPdf.save();
+
+        // 3. Create downloadable file & trigger download
+        const blob = new Blob([unlockedBytes], { type: "application/pdf" });
+        unlockedBlobUrl = URL.createObjectURL(blob);
+
+        const baseName = selectedFile.name.replace(/\.pdf$/i, "");
+        unlockedFileName = `${baseName}_unlocked.pdf`;
+
+        setProgress(100, "Done!");
+        setTimeout(hideProgress, 500);
+
+        triggerDownload(unlockedBlobUrl, unlockedFileName);
+
+        setCatMood("success");
+        successAlert.textContent = `Purr-fect! Your PDF (${totalPages} ${totalPages === 1 ? "page" : "pages"}) is unlocked and downloading now.`;
+        successAlert.classList.add("visible");
+        successActions.classList.add("visible");
+        unlockBtn.style.display = "none";
+      } catch (err) {
+        hideProgress();
+
+        if (err && err.customMessage) {
+          showError(err.customMessage);
+        } else if (err && err.name === "PasswordException") {
+          if (err.code === 1) {
+            showError("This PDF is locked! Please enter the password above to unlock it.");
+          } else {
+            showError("Meow-ch! That password isn't right. Please double-check for typos and try again.");
+          }
+          passwordInput.focus();
+          passwordInput.select();
+        } else if (err && (err.name === "InvalidPDFException" || err.name === "FormatError")) {
+          showError("Hmm, this PDF looks corrupted or unreadable. Please try a different file.");
+        } else {
+          showError("Something went wrong while unlocking this PDF. Please try again with a valid PDF file.");
+          console.error("PDF unlock error:", err);
+        }
+      } finally {
+        if (pdfDoc) {
+          try { await pdfDoc.destroy(); } catch (_) {}
+        }
+        isProcessing = false;
+        unlockBtn.disabled = false;
+        passwordInput.disabled = false;
+        unlockBtnText.textContent = "Unlock & Download PDF";
+      }
+    }
+  </script>
+</body>
+</html>
